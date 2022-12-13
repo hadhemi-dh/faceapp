@@ -147,7 +147,8 @@ class FaceApp(QMainWindow):        # Main application
 
         # Load the detector
         self.detector = dlib.get_frontal_face_detector()
-
+        # Load the predictor
+        self.predictor = dlib.shape_predictor("models/shape_predictor_68_face_landmarks.dat")
 
         # GUI
         self.adduserButton.clicked.connect(self.users_dialog)
