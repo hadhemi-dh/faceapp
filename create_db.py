@@ -13,7 +13,7 @@ cursor = connection.cursor()
 
 def create_table():
   # Datenbanktabelle erzeugen
-  sql = "CREATE TABLE IF NOT EXISTS people(person_id INTEGER PRIMARY KEY, name TEXT, mask TEXT, mydate TEXT, mytime TEXT)" 
+  sql = "CREATE TABLE IF NOT EXISTS people(person_id INTEGER PRIMARY KEY, name TEXT, mydate TEXT, mytime TEXT)" 
   cursor.execute(sql)
 
 

@@ -102,12 +102,9 @@ class FaceApp(QMainWindow):        # Main application
         self.detectButton.toggled.connect(self.recognize_button)
 
         self.nameButton.setChecked(True)
-        self.maskButton.setChecked(False)
-        self.emotionButton.setChecked(False)
         self.genderButton.setChecked(False)
         self.ageButton.setChecked(False)
-        self.blurButton.setChecked(False)
-        self.faceLandmarksButton.setChecked(False)
+
 
         self.openVideoButton.clicked.connect(self.open_video)
 
@@ -132,14 +129,6 @@ class FaceApp(QMainWindow):        # Main application
             self.usersList, self.userPath)
         self.encodeListKnown = self.findEncodings()
 
-        # Emotion
-        self.face_exp_model = model_from_json(
-            open('models/facial_expression_model_structure.json', 'r').read())
-        self.face_exp_model.load_weights(
-            'models/facial_expression_model_weights.h5')
-        self.emotions_labels = ('En colère', 'Dégoûté', 'Peur',
-                                'Heureux', 'Triste', 'Surpris', 'Neutre')
-
         # Gender
         self.gender_label_list = ["Homme", "Femme"]
         self.gender_protext = "models/gender_deploy.prototxt"
@@ -156,19 +145,9 @@ class FaceApp(QMainWindow):        # Main application
         self.age_cov_net = cv2.dnn.readNet(
             self.age_caffemodel, self.age_protext)
 
-        # Mask detection
-        self.prototxtPath = "models/deploy.prototxt"
-        self.weightsPath = "models/res10_300x300_ssd_iter_140000.caffemodel"
-        self.faceNet = cv2.dnn.readNet(self.prototxtPath, self.weightsPath)
-        self.maskNet = load_model("models/mask_detector.model")
-
-        # Face Landmarks
         # Load the detector
         self.detector = dlib.get_frontal_face_detector()
 
-        # Load the predictor
-        self.predictor = dlib.shape_predictor(
-            "models/shape_predictor_68_face_landmarks.dat")
 
         # GUI
         self.adduserButton.clicked.connect(self.users_dialog)
@@ -221,7 +200,7 @@ class FaceApp(QMainWindow):        # Main application
 
     def load_db(self):
         connection = sqlite3.connect('face.db')
-        query = "SELECT mytime, mydate, name, mask FROM people ORDER BY person_id DESC"
+        query = "SELECT mytime, mydate, name FROM people ORDER BY person_id DESC"
         result = connection.execute(query)
         self.dbTableWidget.setRowCount(0)
 
@@ -235,45 +214,6 @@ class FaceApp(QMainWindow):        # Main application
     def users_dialog(self):
         user = USER()
         user.exec_()
-
-    def detect_face_mask(self, frame, faceNet, maskNet):
-        (h, w) = frame.shape[:2]
-        blob = cv2.dnn.blobFromImage(
-            frame, 1.0, (300, 300), (104.0, 177.0, 123.0))
-        faceNet.setInput(blob)
-        detections = faceNet.forward()
-
-        faces = []
-        locs = []
-        preds = []
-
-        try:
-            # loop over the detections
-            for i in range(0, detections.shape[2]):
-                confidence = detections[0, 0, i, 2]
-
-                if confidence > 0.5:
-                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-                    (startX, startY, endX, endY) = box.astype("int")
-                    (startX, startY) = (max(0, startX), max(0, startY))
-                    (endX, endY) = (min(w - 1, endX), min(h - 1, endY))
-                    face = frame[startY:endY, startX:endX]
-                    face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-                    face = cv2.resize(face, (224, 224))
-                    face = img_to_array(face)
-                    face = preprocess_input(face)
-                    faces.append(face)
-                    locs.append((startX, startY, endX, endY))
-
-            # only make a predictions if at least one face was detected
-            if len(faces) > 0:
-                faces = np.array(faces, dtype="float32")
-                preds = maskNet.predict(faces, batch_size=32)
-
-            return (locs, preds)
-
-        except:
-            print('Mask Detection Error')
 
     def time(self):     # Get current time.
         return datetime.now().strftime("%d-%b-%Y:%I-%M-%S")
@@ -304,19 +244,6 @@ class FaceApp(QMainWindow):        # Main application
         age = self.age_label_list[age_predictions[0].argmax()]
         return age
 
-    def predict_emotion(self, face_roi):
-        # Gray and resize
-        face_roi = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
-        face_roi = cv2.resize(face_roi, (48, 48))
-        # Array
-        img_pixels = image.img_to_array(face_roi)
-        img_pixels = np.expand_dims(img_pixels, axis=0)
-        img_pixels /= 255
-        # Predict
-        exp_predictions = self.face_exp_model.predict(img_pixels)
-        max_index = np.argmax(exp_predictions[0])
-        emotion = self.emotions_labels[max_index]
-        return emotion
 
     def recognize_button(self, status):
         if status:
@@ -362,30 +289,6 @@ class FaceApp(QMainWindow):        # Main application
             encodeList.append(encode)
         return encodeList
 
-    def face_blur(self, face_roi):
-        face_roi_blur = cv2.GaussianBlur(face_roi, (99, 99), 30)
-        return face_roi_blur
-
-    def draw_face_landmarks(self, frame):
-        # Convert image into grayscale
-        gray = cv2.cvtColor(src=frame, code=cv2.COLOR_BGR2GRAY)
-        # Use detector to find landmarks
-        faces = self.detector(gray)
-
-        for face in faces:
-            # Create landmark object
-            landmarks = self.predictor(image=gray, box=face)
-
-            # Loop through all the points
-            for n in range(0, 68):
-                x = landmarks.part(n).x
-                y = landmarks.part(n).y
-
-                # Draw a circle
-                cv2.circle(img=frame, center=(x, y), radius=2,
-                           color=(255, 255, 0), thickness=-1)
-        # return frame
-
     def draw_rectangle(self, frame, top, right, bottom, left, color, text):
         cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
         cv2.rectangle(frame, (left, bottom-35),
@@ -395,13 +298,13 @@ class FaceApp(QMainWindow):        # Main application
 
     ##### DATABASE #####
 
-    def data_entry(self, connection, cursor,  name, mask, date, time):
+    def data_entry(self, connection, cursor,  name, date, time):
         cursor.execute(
-            "INSERT INTO people VALUES (NULL, ?, ?, ?, ?)", (name, mask, date, time))
+            "INSERT INTO people VALUES (NULL, ?, ?, ?)", (name, date, time))
         connection.commit()
-        print(name, mask, date, time)
+        print(name, date, time)
 
-    def attendance(self, name, mask):
+    def attendance(self, name):
         now = datetime.now()
         date = str(now.strftime("%d/%m/%Y"))
         time = str(now.strftime("%H:%M:%S"))
@@ -411,14 +314,14 @@ class FaceApp(QMainWindow):        # Main application
             connection = sqlite3.connect("face.db")
             cursor = connection.cursor()
             cursor.execute(
-                "SELECT name, mydate, mytime, mask FROM people  WHERE name=? ORDER BY person_id DESC LIMIT 1", (name,))
+                "SELECT name, mydate, mytime, FROM people  WHERE name=? ORDER BY person_id DESC LIMIT 1", (name,))
             row = cursor.fetchall()
 
             if row == []:
-                self.data_entry(connection, cursor,  name, mask, date, time)
+                self.data_entry(connection, cursor,  name, date, time)
             else:
 
-                dbName, dbDate, dbTime, dbMask = row[0]
+                dbName, dbDate, dbTime = row[0]
                 dbHour = dbTime.split(":")[0]
 
                 if dbName == name and dbDate == date and dbHour == hour:
@@ -426,7 +329,7 @@ class FaceApp(QMainWindow):        # Main application
                 else:
                     if name != 'INCONNUE':
                         self.data_entry(connection, cursor,
-                                        name, mask, date, time)
+                                        name, date, time)
 
             cursor.close()
             connection.close()
@@ -462,25 +365,6 @@ class FaceApp(QMainWindow):        # Main application
             if name != 'INCONNUE':
                 self.usersName.append(name)
 
-            if self.maskButton.isChecked():
-                locs, preds = self.detect_face_mask(
-                    frame, self.faceNet, self.maskNet)
-
-                for (box, pred) in zip(locs, preds):
-                    #left, top, right, botttom = box
-                    (mask, withoutMask) = pred
-                    label = "masque" if mask > withoutMask else "sans masque"
-                    color = (0, 255, 0) if label == "masque" else (0, 0, 255)
-                    self.draw_rectangle(frame, top, right,
-                                        bottom, left, color, label)
-                    self.attendance(name, label)
-
-            elif self.emotionButton.isChecked():
-                emotion = self.predict_emotion(face_roi)
-                color = (0, 0, 255)
-                self.draw_rectangle(frame, top, right,
-                                    bottom, left, color, emotion)
-
             elif self.genderButton.isChecked():
                 gender = self.predict_gender(face_roi)
                 color = (0, 0, 255)
@@ -493,12 +377,7 @@ class FaceApp(QMainWindow):        # Main application
                 self.draw_rectangle(frame, top, right,
                                     bottom, left, color, age)
 
-            elif self.blurButton.isChecked():
-                face_roi_blur = cv2.GaussianBlur(face_roi, (99, 99), 30)
-                frame[top:bottom, left:right] = face_roi_blur
 
-            elif self.faceLandmarksButton.isChecked():
-                self.draw_face_landmarks(frame)
 
             else:
                 color = (0, 0, 255)
@@ -561,7 +440,8 @@ class FaceApp(QMainWindow):        # Main application
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    window = FaceApp()         # Running application loop.
+    window = FaceApp()  
+    # Running application loop.
     window.setWindowTitle("Face App")
     window.show()
 
